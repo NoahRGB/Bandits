@@ -3,6 +3,8 @@ import math
 
 import matplotlib.pyplot as plt
 
+from bandit import Bandit
+
 def argmax(d):
     # returns a random key in the dict among those that have the max value
     max_val = max(list(d.values())) 
@@ -20,7 +22,7 @@ def plot(x, y_vals, y_labels=[], x_title="", y_title="", y_lims=None, x_lims=Non
     plt.show()
 
 
-def k_armed_bandits(k, steps, epsilon, quiet=True, Q1=0):
+def k_armed_bandits(k, steps, epsilon, quiet=True, Q1=0, a=None):
     # returns the average reward recieved over steps and the percentage
     # of the time that the optimal action was chosen
     q = {} # true action rewards 
@@ -41,17 +43,12 @@ def k_armed_bandits(k, steps, epsilon, quiet=True, Q1=0):
         R.append(random.gauss(q[A], 1))
         N[A] += 1
 
-        # Q[A] is updated using sample averages
-        #Q[A].append(Q[A][-1] + ((R[i] - Q[A][-1]) / N[A]))
-        Q[A].append(Q[A][-1] + 0.1 * (R[i] - Q[A][-1]))
-
-        #a = 0.1
-        #r_sum = 0
-        #n = N[A]
-        #for j in range(0, n):
-        #    r_sum += a * math.pow((1 - a), (n-j)) * R[j]
-        #Q[A].append(math.pow((1 - a), n) * Q[A][0] + r_sum)
-    
+        
+        if not a: # Q[A] is updated using sample averages
+            Q[A].append(Q[A][-1] + ((R[i] - Q[A][-1]) / N[A]))
+        else:
+            Q[A].append(Q[A][-1] + a * (R[i] - Q[A][-1]))
+   
     if not quiet:
         for i in range(0, k):
             print(f"Bandit {i+1} --> Q: {Q[i]}, N: {N[i]}, q: {q[i]}")
@@ -80,8 +77,9 @@ def run_bandit_trials(trials, k, epsilons, min_step=100, max_step=1000, step_ste
 
 
 if __name__ == "__main__":
-    run_bandit_trials(2000, 10, [0.0, 0.01, 0.1], quiet=False)
+    #run_bandit_trials(2000, 10, [0.0, 0.01, 0.1], quiet=False)
     #run_bandit_trials(10000, 10, [0.1], quiet=False)
     #run_bandit_trials(1, 10, [0.1], quiet=False, min_step=1, max_step=5, step_step=1)
 
+    b1 = Bandit(random.gauss(1, 0), 0)
     
