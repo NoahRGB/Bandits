@@ -9,50 +9,59 @@ def argmax(d):
     maxs = [key for (key, val) in d.items() if val == max_val]
     return random.choice(maxs) 
 
-def k_armed_bandits(k, steps, epsilon, quiet=True):
+def plot(x, y_vals, y_labels=[], x_title="", y_title="", y_lims=None, x_lims=None):
+    for i in range(0, len(y_vals)):
+        plt.plot(x, y_vals[i], label=y_labels[i])
+    plt.legend()
+    if y_lims: plt.ylim(y_lims[0], y_lims[1])
+    if x_lims: plt.xlim(x_lims[0], x_lims[1])
+    plt.xlabel(x_title)
+    plt.ylabel(y_title)
+    plt.show()
+
+
+def k_armed_bandits(k, steps, epsilon, quiet=True, Q1=0):
     # returns the average reward recieved over steps and the percentage
     # of the time that the optimal action was chosen
-    reward_sum = 0
-    optimal_action_sum = 0
     q = {} # true action rewards 
     Q = {} # current estimates of action rewards
     N = {} # number of times each action is chosen
-    R = [] # stores all previous rewards
+    R = [] # stores all previous rewards recieved
     for i in range(0, k):
-        Q[i] = [0]
+        Q[i] = [Q1] 
         N[i] = 0
         q[i] = random.gauss(0, 1) # random reward in normal dist with mean 0, stdev=1
     optimal_action = argmax(q)
-    
     for i in range(0, steps):
         if random.random() < epsilon: # epsilon% of the time, choose a random action
             A = random.choice(list(q.keys())) 
         else: # otherwise choose one of the best actions so far
-            A = argmax(Q)
+            A = argmax({key: val[-1] for (key,val) in Q.items()})
 
-        optimal_action_sum += (A == optimal_action)
         R.append(random.gauss(q[A], 1))
-        reward_sum += R[i] 
         N[A] += 1
 
         # Q[A] is updated using sample averages
-        # Q[A].append(Q[A][len(Q[A])-2] + ((R[i] - Q[A][len(Q[A])-2] / N[A])))
-        a = 0.2
-        r_sum = 0
-        n = len(Q[A])
-        for j in range(0, n):
-            r_sum += a * math.pow((1 - a), (n-1)) * R[j]
-        Q[A].append(math.pow((1 - a), n) * Q[A][0] + r_sum)
+        #Q[A].append(Q[A][-1] + ((R[i] - Q[A][-1]) / N[A]))
+        Q[A].append(Q[A][-1] + 0.1 * (R[i] - Q[A][-1]))
+
+        #a = 0.1
+        #r_sum = 0
+        #n = N[A]
+        #for j in range(0, n):
+        #    r_sum += a * math.pow((1 - a), (n-j)) * R[j]
+        #Q[A].append(math.pow((1 - a), n) * Q[A][0] + r_sum)
     
     if not quiet:
         for i in range(0, k):
             print(f"Bandit {i+1} --> Q: {Q[i]}, N: {N[i]}, q: {q[i]}")
-    return sum(R) / steps, (optimal_action_sum / steps) * 100
+    return sum(R) / steps, (sum([value for (key, value) in N.items() if key==optimal_action]) / steps) * 100
 
 def run_bandit_trials(trials, k, epsilons, min_step=100, max_step=1000, step_step=100, quiet=True):
     epsilon_reward = {epsilon: [] for epsilon in epsilons} 
     epsilon_optimal_count = {epsilon: [] for epsilon in epsilons}    
     step_range = [1] + [i for i in range(min_step, max_step+1, step_step)]
+    if min_step == max_step == 1: step_range = [1]
 
     for epsilon in epsilon_reward:
         for steps in step_range: 
@@ -60,31 +69,19 @@ def run_bandit_trials(trials, k, epsilons, min_step=100, max_step=1000, step_ste
             avg_reward = 0
             avg_optimal_percentage = 0
             for i in range(0, trials):
-                reward, optimal_percentage = k_armed_bandits(k, steps, epsilon) 
+                reward, optimal_percentage = k_armed_bandits(k, steps, epsilon, quiet=True) 
                 avg_reward += reward
                 avg_optimal_percentage += optimal_percentage
             epsilon_reward[epsilon].append(avg_reward / trials)
             epsilon_optimal_count[epsilon].append(avg_optimal_percentage / trials)
     
-    for epsilon in epsilon_reward:
-        plt.plot(step_range, epsilon_reward[epsilon], label=f"ε = {epsilon}")
-    plt.legend()
-    plt.xlabel("Step sizes")
-    plt.ylabel("Average reward recieved")
-    plt.show()
-    
-    for epsilon in epsilon_optimal_count:
-        plt.plot(step_range, epsilon_optimal_count[epsilon], label=f"ε = {epsilon}")
-    ax = plt.gca()
-    ax.set_ylim([0, 100])
-    plt.xlabel("Step sizes")
-    plt.ylabel("Percentage of the time the optimal action was chosen")
-    plt.legend()
-    plt.show()
+    plot(step_range, list(epsilon_reward.values()), [f"ε=0.0", f"ε=0.01", f"ε=0.1"], "Step sizes", "Average reward recieved")
+    plot(step_range, list(epsilon_optimal_count.values()), [f"ε=0.0", f"ε=0.01", f"ε=0.1"], "Step sizes", "Percentage of the time the optimal action was chosen", y_lims=[0, 100])
 
 
 if __name__ == "__main__":
     run_bandit_trials(2000, 10, [0.0, 0.01, 0.1], quiet=False)
-    #run_bandit_trials(1, 10, [0.1], quiet=False)
+    #run_bandit_trials(10000, 10, [0.1], quiet=False)
+    #run_bandit_trials(1, 10, [0.1], quiet=False, min_step=1, max_step=5, step_step=1)
 
     
