@@ -1,111 +1,125 @@
-import random
-import math
+import random, math
 
-import matplotlib.pyplot as plt
+from utils import argmax 
 
-from bandit import KArmedBandit
+class Bandit:
+    def __init__(self, k, step_size, q_centre=0):
+        self.k = k
+        self.step_size = step_size
+        self.q_centre = q_centre
+    
+    def reset(self):
+        self.N, self.q = {}, {}
+        self.rewards = []
+        for arm in range(0, self.k):
+            self.N[arm] = 0
+            self.q[arm] = random.gauss(self.q_centre, 1)
+        self.optimal_action = argmax(self.q)
+    
+    def run(self):
+        raise NotImplementedError("run not implemented")
 
-def argmax(d):
-    # returns a random key in the dict among those that have the max value
-    max_val = max(list(d.values())) 
-    maxs = [key for (key, val) in d.items() if val == max_val]
-    return random.choice(maxs) 
+    def update(self, action):
+        raise NotImplementedError("update_Q not implemented")
 
-def plot(x, y_vals, y_labels=[], x_title="", y_title="", y_lims=None, x_lims=None):
-    for i in range(0, len(y_vals)):
-        plt.plot(x, y_vals[i], label=y_labels[i] if len(y_labels) > i else "")
-    plt.legend()
-    if y_lims: plt.ylim(y_lims[0], y_lims[1])
-    if x_lims: plt.xlim(x_lims[0], x_lims[1])
-    plt.xlabel(x_title)
-    plt.ylabel(y_title)
-    plt.show()
+    def calculate_optimal_action_count(self):
+        # return sum([value for (key, value) in self.N.items() if key==self.optimal_action]) 
+        return self.N[self.optimal_action]
 
-def k_armed_bandits(k, steps, epsilon, quiet=True, Q1=0, a=None):
-    # returns the average reward recieved over steps and the percentage
-    # of the time that the optimal action was chosen
-    q = {} # true action rewards 
-    Q = {} # current estimates of action rewards
-    N = {} # number of times each action is chosen
-    R = [] # stores all previous rewards recieved
-    for i in range(0, k):
-        Q[i] = [Q1] 
-        N[i] = 0
-        q[i] = random.gauss(0, 1) # random reward in normal dist with mean 0, stdev=1
-    optimal_action = argmax(q)
-    for i in range(0, steps):
-        if random.random() < epsilon: # epsilon% of the time, choose a random action
-            A = random.choice(list(q.keys())) 
-        else: # otherwise choose one of the best actions so far
-            A = argmax({key: val[-1] for (key,val) in Q.items()})
+    def get_config(self):
+        raise NotImplementedError("get_config not implemented")
 
-        R.append(random.gauss(q[A], 1))
-        N[A] += 1
+    def __str__(self):
+        raise NotImplementedError("__str__ not implemented")
 
-        if not a: # Q[A] is updated using sample averages
-            Q[A].append(Q[A][-1] + ((R[i] - Q[A][-1]) / N[A]))
-        else:
-            Q[A].append(Q[A][-1] + a * (R[i] - Q[A][-1]))
+class ActionValueBandit(Bandit):
+    def __init__(self, k, Q1, epsilon=None, c=None, step_size=None):
+        super().__init__(k, step_size)
+        self.epsilon = epsilon
+        self.c = c
+        self.Q1 = Q1
+        self.reset()
+
+    def reset(self):
+        super().reset()
+        self.Q = {}
+        for arm in range(0, self.k):
+            self.Q[arm] = [self.Q1]
    
-    if not quiet:
-        for i in range(0, k):
-            print(f"Bandit {i+1} --> Q: {Q[i]}, N: {N[i]}, q: {q[i]}")
-    return sum(R) / steps, (sum([value for (key, value) in N.items() if key==optimal_action]) / steps) * 100
+    def run(self):
+        if self.c != None and self.epsilon == None:
+            action = argmax({key: (vals[-1] + self.c * math.sqrt(math.log(len(self.rewards)+1) / (self.N[key] if self.N[key] > 0 else 1))) for (key, vals) in self.Q.items()})
+        elif self.epsilon != None and self.c == None:
+            if self.epsilon and random.random() < self.epsilon: # epsilon% of the time, use a random action/arm
+                action = random.randint(0, self.k-1)
+            else: # otherwise use the action with the best Q
+                action = argmax({key: vals[-1] for (key, vals) in self.Q.items()})
+        else:
+            print("Cannot have a UCB c and an epsilon")
+            return -1
 
-def run_bandit_trials(trials, k, epsilons, min_step=100, max_step=1000, step_step=100, quiet=True):
-    epsilon_reward = {epsilon: [] for epsilon in epsilons} 
-    epsilon_optimal_count = {epsilon: [] for epsilon in epsilons}    
-    step_range = [1] + [i for i in range(min_step, max_step+1, step_step)]
-    if min_step == max_step == 1: step_range = [1]
+        self.N[action] += 1
+        self.rewards.append(random.gauss(self.q[action], 1)) # reward is a normal distribution around the true reward
+        self.update(action)
+        return self.rewards[-1]
 
-    for epsilon in epsilon_reward:
-        for steps in step_range: 
-            if not quiet: print(f"ε = {epsilon}, steps = {steps}")
-            avg_reward = 0
-            avg_optimal_percentage = 0
-            for i in range(0, trials):
-                reward, optimal_percentage = k_armed_bandits(k, steps, epsilon, quiet=True) 
-                avg_reward += reward
-                avg_optimal_percentage += optimal_percentage
-            epsilon_reward[epsilon].append(avg_reward / trials)
-            epsilon_optimal_count[epsilon].append(avg_optimal_percentage / trials)
-    
-    plot(step_range, list(epsilon_reward.values()), [f"ε=0.0", f"ε=0.01", f"ε=0.1"], "Step sizes", "Average reward recieved")
-    plot(step_range, list(epsilon_optimal_count.values()), [f"ε=0.0", f"ε=0.01", f"ε=0.1"], "Step sizes", "Percentage of the time the optimal action was chosen", y_lims=[0, 100])
+    def update(self, action):
+        if not self.step_size: # no step size defined, so use sample average to update Q
+            self.Q[action].append(self.Q[action][-1] + ((self.rewards[-1] - self.Q[action][-1]) / self.N[action]))
+        else: # use step_size as the fixed step_size a to update Q
+            self.Q[action].append(self.Q[action][-1] + self.step_size * (self.rewards[-1] - self.Q[action][-1]))
 
-def run_bandit_trials2(trials, k, epsilons, min_step=100, max_step=1000, step_step=100, quiet=True):
-    epsilon_average_rewards = {epsilon: [] for epsilon in epsilons}
-    epsilon_average_optimal_percentage = {epsilon: [] for epsilon in epsilons}
-    step_range = [1] + [i for i in range(min_step, max_step+1, step_step)]
-    if min_step == max_step == 1: step_range = [1]
-    for epsilon in epsilons:
-        for steps in step_range:
-            if not quiet: print(f"ε = {epsilon}, steps = {steps}")
-            bandit = KArmedBandit(10, 0, epsilon)
-            for i in range(0, trials):
-                bandit.run()
-            epsilon_average_rewards[epsilon]
+    def get_config(self):
+        return f"k={self.k},ε={self.epsilon},c={self.c},Q1={self.Q1},a={self.step_size if self.step_size else '1/n'}"
 
-                
+    def __str__(self):
+        string = f"{self.k}-armed action value bandit with Q1={self.Q1}, ε={self.epsilon}"
+        for i in range(0, self.k):
+            string += f"\nArm {i} --> N={self.N[i]}, Q={self.Q[i][-1]}, q={self.q[i]}"
+        string += f"\nTotal reward = {sum(self.rewards)}"
+        string += f"\nOptimal action count = {sum}"
+        return string 
+        
+class GradientBandit(Bandit):
+    def __init__(self, k, step_size, q_centre=0, use_baseline=False):
+        super().__init__(k, step_size, q_centre)
+        self.use_baseline = use_baseline
+        self.reset()
 
+    def reset(self):
+        super().reset()
+        self.Q, self.H, self.probs = {}, {}, {}
+        self.reward_sum = 0
+        for arm in range(0, self.k):
+            self.Q[arm] = [0]
+            self.H[arm] = [0]
+            self.probs[arm] = []
+         
+    def run(self):
+        for action, preference in self.H.items():
+            self.probs[action].append(math.exp(preference[-1]) / (sum([math.exp(vals[-1]) for (key,vals) in self.H.items()])))
+        action = argmax({key: self.probs[key][-1] for key in self.H.keys()})
+        self.N[action] += 1
+        self.rewards.append(random.gauss(self.q[action], 1)) # reward is a normal distribution around the true reward
+        self.reward_sum += self.rewards[-1]
+        self.update(action)
+        return self.rewards[-1]
 
+    def update(self, action):
+        self.Q[action].append(self.Q[action][-1] + self.step_size * (self.rewards[-1] - self.Q[action][-1]))
+        #baseline = self.Q[action][-1] if self.use_baseline else 0
+        baseline = self.reward_sum / len(self.rewards) if self.use_baseline else 0
+        self.H[action].append(self.H[action][-1] + self.step_size * (self.rewards[-1] - baseline) * (1 - self.probs[action][-1]))
+        for other_action in range(0, self.k):
+            if other_action != action:
+                self.H[other_action].append(self.H[other_action][-1] - self.step_size * (self.rewards[-1] - baseline) * self.probs[other_action][-1])
+    def get_config(self):
+        return f"k={self.k},a={self.step_size if self.step_size else '1/n'},baseline={self.use_baseline}"
 
-if __name__ == "__main__":
-    #run_bandit_trials(2000, 10, [0.0, 0.01, 0.1], quiet=False)
-    #run_bandit_trials(10000, 10, [0.1], quiet=False)
-    #run_bandit_trials(1, 10, [0.1], quiet=False, min_step=1, max_step=5, step_step=1)
-    trials = 2000
-    avg_rewards = []
-    step_range = [1] + [i for i in range(100, 1001, 100)]
-    for steps in step_range:
-        print(f"Running bandit with steps = {steps}")
-        avg_reward = 0
-        for i in range(0, trials):
-            bandit = KArmedBandit(10, 0, 0.1)
-            for i in range(0, steps):
-                bandit.run()
-            avg_reward += sum(bandit.rewards) / steps
-        avg_rewards.append(avg_reward / trials)
-    print(avg_rewards)
-    plot(step_range, [avg_rewards])
-    
+    def __str__(self):
+        string = f"{self.k}-armed gradient bandit with a={self.step_size}, basline={self.use_baseline}"
+        for i in range(0, self.k):
+            string += f"\nArm {i} --> N={self.N[i]}, H={self.H[i][-1]}, q={self.q[i]}, probability={self.probs[i][-1]}"
+        string += f"\nTotal reward = {sum(self.rewards)}"
+        string += f"\nOptimal action count = {sum}"
+        return string 
