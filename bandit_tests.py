@@ -34,18 +34,18 @@ def run_bandit_testbed(trials, bandits, min_step=100, max_step=1000, step_step=1
 def run_parameter_study():
     all_x_vals = [math.pow(2, i) for i in range(-7, 3, 1)]
     x_vals = [[math.pow(2, i) for i in range(-7, -1, 1)], [math.pow(2, i) for i in range(-4, 3, 1)], [math.pow(2, i) for i in range(-2, 3, 1)], [math.pow(2, i) for i in range(-5, 0, 1)]]
-    x_ticks = [range(-7, -1, 1), range(-4, 3, 1), range(-2, 3, 1), range(-5, 0, 1)]
+    x_ticks = [list(range(-7, -1, 1)), list(range(-4, 3, 1)), list(range(-2, 3, 1)), list(range(-5, 0, 1))]
     bandits = [[ActionValueBandit(10, 0, epsilon=param) for param in x_vals[0]],
             [ActionValueBandit(10, 0, c=param, step_size=0.1) for param in x_vals[1]],
             [ActionValueBandit(10, param, epsilon=0, step_size=0.1) for param in x_vals[2]],
-            [GradientBandit(10, param) for param in x_vals[3]]] 
+            [GradientBandit(10, param, use_baseline=True) for param in x_vals[3]]]
                
     y_vals = []
     for bandit_set in bandits:
         avg_rewards, avg_optimals = run_bandit_testbed(1000, bandit_set, min_step=1000, max_step=1000, step_step=1, quiet=False, do_plot=False)
         y_vals.append([val[0] for val in avg_rewards.values()])
     
-    plot(x_ticks, y_vals, y_labels=["εgreedy", "UCB", "optimistic greedy", "gradient"], xticks=range(-7, 3), xticks_labels=[f"{num}/{den}" for (num, den) in [x.as_integer_ratio() for x in all_x_vals]])
+    plot(x_ticks, y_vals, save_path="parameter_study", x_title="Parameter value for each algorithm (Q1,ε,c,a)", y_title="Avg reward over 2000 trials of 1000 steps", y_labels=["εgreedy", "UCB", "optimistic greedy", "gradient"], xticks=range(-7, 3), xticks_labels=[f"{num}/{den}" for (num, den) in [x.as_integer_ratio() for x in all_x_vals]])
                  
 if __name__ == "__main__":
     # action value bandits at different epsilon values
@@ -58,9 +58,7 @@ if __name__ == "__main__":
     #bandits = [ActionValueBandit(10, 0, epsilon=0.1, step_size=0.1), ActionValueBandit(10, 0, c=2, step_size=0.1)] 
     
     # gradient bandits with/without baselines at different step sizes
-    #bandits = [GradientBandit(10, 0.1, q_centre=4), GradientBandit(10, 0.1, q_centre=4, use_baseline=True), GradientBandit(10, 0.4, q_centre=4), GradientBandit(10, 0.4, q_centre=4, use_baseline=True)]
-    bandits = [GradientBandit(10, 0.1, use_baseline=True)]
+    # bandits = [GradientBandit(10, 0.1, q_centre=4), GradientBandit(10, 0.1, q_centre=4, use_baseline=True), GradientBandit(10, 0.4, q_centre=4), GradientBandit(10, 0.4, q_centre=4, use_baseline=True)]
     
-    #run_bandit_testbed(1000, bandits, quiet=False)
-    run_bandit_testbed(2000, bandits, quiet=False)
-    # run_parameter_study()
+    #run_bandit_testbed(2000, bandits, quiet=False)
+    run_parameter_study()

@@ -88,17 +88,16 @@ class GradientBandit(Bandit):
 
     def reset(self):
         super().reset()
-        self.Q, self.H, self.probs = {}, {}, {}
+        self.H, self.probs = {}, {}
         self.reward_sum = 0
         for arm in range(0, self.k):
-            self.Q[arm] = [0]
             self.H[arm] = [0]
             self.probs[arm] = []
          
     def run(self):
         for action, preference in self.H.items():
             self.probs[action].append(math.exp(preference[-1]) / (sum([math.exp(vals[-1]) for (key,vals) in self.H.items()])))
-        action = argmax({key: self.probs[key][-1] for key in self.H.keys()})
+        action = random.choices(list(range(0, self.k)), [self.probs[arm][-1] for arm in range(0, self.k)], k=1)[0]
         self.N[action] += 1
         self.rewards.append(random.gauss(self.q[action], 1)) # reward is a normal distribution around the true reward
         self.reward_sum += self.rewards[-1]
@@ -106,8 +105,6 @@ class GradientBandit(Bandit):
         return self.rewards[-1]
 
     def update(self, action):
-        self.Q[action].append(self.Q[action][-1] + self.step_size * (self.rewards[-1] - self.Q[action][-1]))
-        #baseline = self.Q[action][-1] if self.use_baseline else 0
         baseline = self.reward_sum / len(self.rewards) if self.use_baseline else 0
         self.H[action].append(self.H[action][-1] + self.step_size * (self.rewards[-1] - baseline) * (1 - self.probs[action][-1]))
         for other_action in range(0, self.k):
